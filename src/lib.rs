@@ -42,8 +42,22 @@ pub struct Aviffy {
 /// Color and alpha must have the same dimensions and depth.
 ///
 /// Data is written (streamed) to `into_output`.
-pub fn serialize<W: io::Write>(into_output: W, color_av1_data: &[u8], alpha_av1_data: Option<&[u8]>, width: u32, height: u32, depth_bits: u8) -> io::Result<()> {
-    Aviffy::new().write(into_output, color_av1_data, alpha_av1_data, width, height, depth_bits)
+pub fn serialize<W: io::Write>(
+    into_output: W,
+    color_av1_data: &[u8],
+    alpha_av1_data: Option<&[u8]>,
+    width: u32,
+    height: u32,
+    depth_bits: u8,
+) -> io::Result<()> {
+    Aviffy::new().write(
+        into_output,
+        color_av1_data,
+        alpha_av1_data,
+        width,
+        height,
+        depth_bits,
+    )
 }
 
 impl Aviffy {
@@ -73,14 +87,20 @@ impl Aviffy {
     /// If set, must match the AV1 color payload, and will result in `colr` box added to AVIF.
     /// Defaults to BT.601, because that's what Safari assumes when `colr` is missing.
     /// Other browsers are smart enough to read this from the AV1 payload instead.
-    pub fn matrix_coefficients(&mut self, matrix_coefficients: constants::MatrixCoefficients) -> &mut Self {
+    pub fn matrix_coefficients(
+        &mut self,
+        matrix_coefficients: constants::MatrixCoefficients,
+    ) -> &mut Self {
         self.colr.matrix_coefficients = matrix_coefficients;
         self
     }
 
     /// If set, must match the AV1 color payload, and will result in `colr` box added to AVIF.
     /// Defaults to sRGB.
-    pub fn transfer_characteristics(&mut self, transfer_characteristics: constants::TransferCharacteristics) -> &mut Self {
+    pub fn transfer_characteristics(
+        &mut self,
+        transfer_characteristics: constants::TransferCharacteristics,
+    ) -> &mut Self {
         self.colr.transfer_characteristics = transfer_characteristics;
         self
     }
@@ -114,11 +134,27 @@ impl Aviffy {
     /// Color and alpha must have the same dimensions and depth.
     ///
     /// Data is written (streamed) to `into_output`.
-    pub fn write<W: io::Write>(&self, into_output: W, color_av1_data: &[u8], alpha_av1_data: Option<&[u8]>, width: u32, height: u32, depth_bits: u8) -> io::Result<()> {
-        self.make_boxes(color_av1_data, alpha_av1_data, width, height, depth_bits).write(into_output)
+    pub fn write<W: io::Write>(
+        &self,
+        into_output: W,
+        color_av1_data: &[u8],
+        alpha_av1_data: Option<&[u8]>,
+        width: u32,
+        height: u32,
+        depth_bits: u8,
+    ) -> io::Result<()> {
+        self.make_boxes(color_av1_data, alpha_av1_data, width, height, depth_bits)
+            .write(into_output)
     }
 
-    fn make_boxes<'data>(&self, color_av1_data: &'data [u8], alpha_av1_data: Option<&'data [u8]>, width: u32, height: u32, depth_bits: u8) -> AvifFile<'data> {
+    fn make_boxes<'data>(
+        &self,
+        color_av1_data: &'data [u8],
+        alpha_av1_data: Option<&'data [u8]>,
+        width: u32,
+        height: u32,
+        depth_bits: u8,
+    ) -> AvifFile<'data> {
         let mut image_items = ArrayVec::new();
         let mut iloc_items = ArrayVec::new();
         let mut compatible_brands = ArrayVec::new();
@@ -140,7 +176,9 @@ impl Aviffy {
         let ispe_prop = ipco.push(IpcoProp::Ispe(IspeBox { width, height }));
         // This is redundant, but Chrome wants it, and checks that it matches :(
         let av1c_color_prop = ipco.push(IpcoProp::Av1C(Av1CBox {
-            seq_profile: self.min_seq_profile.max(if color_depth_bits >= 12 { 2 } else { 0 }),
+            seq_profile: self
+                .min_seq_profile
+                .max(if color_depth_bits >= 12 { 2 } else { 0 }),
             seq_level_idx_0: 31,
             seq_tier_0: false,
             high_bitdepth: color_depth_bits >= 10,
@@ -155,7 +193,9 @@ impl Aviffy {
             channels: 3,
             depth: color_depth_bits,
         }));
-        let mut prop_ids: ArrayVec<u8, 5> = [ispe_prop, av1c_color_prop | ESSENTIAL_BIT, pixi_3].into_iter().collect();
+        let mut prop_ids: ArrayVec<u8, 5> = [ispe_prop, av1c_color_prop | ESSENTIAL_BIT, pixi_3]
+            .into_iter()
+            .collect();
         // Redundant info, already in AV1
         if self.colr != Default::default() {
             let colr_color_prop = ipco.push(IpcoProp::Colr(self.colr));
@@ -211,40 +251,44 @@ impl Aviffy {
             }
             ipma_entries.push(IpmaEntry {
                 item_id: alpha_image_id,
-                prop_ids: [ispe_prop, av1c_alpha_prop | ESSENTIAL_BIT, auxc_prop, pixi_1].into_iter().collect(),
+                prop_ids: [
+                    ispe_prop,
+                    av1c_alpha_prop | ESSENTIAL_BIT,
+                    auxc_prop,
+                    pixi_1,
+                ]
+                .into_iter()
+                .collect(),
             });
 
             // Use interleaved color and alpha, with alpha first.
             // Makes it possible to display partial image.
             iloc_items.push(IlocItem {
                 id: color_image_id,
-                extents: [
-                    IlocExtent {
-                        offset: IlocOffset::Relative(alpha_data.len()),
-                        len: color_av1_data.len(),
-                    },
-                ].into(),
+                extents: [IlocExtent {
+                    offset: IlocOffset::Relative(alpha_data.len()),
+                    len: color_av1_data.len(),
+                }]
+                .into(),
             });
             iloc_items.push(IlocItem {
                 id: alpha_image_id,
-                extents: [
-                    IlocExtent {
-                        offset: IlocOffset::Relative(0),
-                        len: alpha_data.len(),
-                    },
-                ].into(),
+                extents: [IlocExtent {
+                    offset: IlocOffset::Relative(0),
+                    len: alpha_data.len(),
+                }]
+                .into(),
             });
             data_chunks.push(alpha_data);
             data_chunks.push(color_av1_data);
         } else {
             iloc_items.push(IlocItem {
                 id: color_image_id,
-                extents: [
-                    IlocExtent {
-                        offset: IlocOffset::Relative(0),
-                        len: color_av1_data.len(),
-                    },
-                ].into(),
+                extents: [IlocExtent {
+                    offset: IlocOffset::Relative(0),
+                    len: color_av1_data.len(),
+                }]
+                .into(),
             });
             data_chunks.push(color_av1_data);
         };
@@ -274,15 +318,30 @@ impl Aviffy {
             },
             // Here's the actual data. If HEIF wasn't such a kitchen sink, this
             // would have been the only data this file needs.
-            mdat: MdatBox {
-                data_chunks,
-            },
+            mdat: MdatBox { data_chunks },
         }
     }
 
-    #[must_use] pub fn to_vec(&self, color_av1_data: &[u8], alpha_av1_data: Option<&[u8]>, width: u32, height: u32, depth_bits: u8) -> Vec<u8> {
-        let mut out = Vec::with_capacity(color_av1_data.len() + alpha_av1_data.map_or(0, |a| a.len()) + 410);
-        self.write(&mut out, color_av1_data, alpha_av1_data, width, height, depth_bits).unwrap(); // Vec can't fail
+    #[must_use]
+    pub fn to_vec(
+        &self,
+        color_av1_data: &[u8],
+        alpha_av1_data: Option<&[u8]>,
+        width: u32,
+        height: u32,
+        depth_bits: u8,
+    ) -> Vec<u8> {
+        let mut out =
+            Vec::with_capacity(color_av1_data.len() + alpha_av1_data.map_or(0, |a| a.len()) + 410);
+        self.write(
+            &mut out,
+            color_av1_data,
+            alpha_av1_data,
+            width,
+            height,
+            depth_bits,
+        )
+        .unwrap(); // Vec can't fail
         out
     }
 
@@ -305,7 +364,14 @@ impl Aviffy {
 }
 
 /// See [`serialize`] for description. This one makes a `Vec` instead of using `io::Write`.
-#[must_use] pub fn serialize_to_vec(color_av1_data: &[u8], alpha_av1_data: Option<&[u8]>, width: u32, height: u32, depth_bits: u8) -> Vec<u8> {
+#[must_use]
+pub fn serialize_to_vec(
+    color_av1_data: &[u8],
+    alpha_av1_data: Option<&[u8]>,
+    width: u32,
+    height: u32,
+    depth_bits: u8,
+) -> Vec<u8> {
     Aviffy::new().to_vec(color_av1_data, alpha_av1_data, width, height, depth_bits)
 }
 
@@ -333,8 +399,8 @@ fn test_roundtrip_parse_mp4_alpha() {
 
 #[test]
 fn test_roundtrip_parse_avif() {
-    let test_img = [1,2,3,4,5,6];
-    let test_alpha = [77,88,99];
+    let test_img = [1, 2, 3, 4, 5, 6];
+    let test_alpha = [77, 88, 99];
     let avif = serialize_to_vec(&test_img, Some(&test_alpha), 10, 20, 8);
 
     let ctx = avif_parse::read_avif(&mut avif.as_slice()).unwrap();
@@ -345,8 +411,8 @@ fn test_roundtrip_parse_avif() {
 
 #[test]
 fn test_roundtrip_parse_avif_colr() {
-    let test_img = [1,2,3,4,5,6];
-    let test_alpha = [77,88,99];
+    let test_img = [1, 2, 3, 4, 5, 6];
+    let test_alpha = [77, 88, 99];
     let avif = Aviffy::new()
         .matrix_coefficients(constants::MatrixCoefficients::Bt709)
         .to_vec(&test_img, Some(&test_alpha), 10, 20, 8);
@@ -359,9 +425,12 @@ fn test_roundtrip_parse_avif_colr() {
 
 #[test]
 fn premultiplied_flag() {
-    let test_img = [1,2,3,4];
-    let test_alpha = [55,66,77,88,99];
-    let avif = Aviffy::new().premultiplied_alpha(true).to_vec(&test_img, Some(&test_alpha), 5, 5, 8);
+    let test_img = [1, 2, 3, 4];
+    let test_alpha = [55, 66, 77, 88, 99];
+    let avif =
+        Aviffy::new()
+            .premultiplied_alpha(true)
+            .to_vec(&test_img, Some(&test_alpha), 5, 5, 8);
 
     let ctx = avif_parse::read_avif(&mut avif.as_slice()).unwrap();
 
