@@ -46,6 +46,7 @@ pub fn serialize<W: io::Write>(
     into_output: W,
     color_av1_data: &[u8],
     alpha_av1_data: Option<&[u8]>,
+    exif: Option<&[u8]>,
     width: u32,
     height: u32,
     depth_bits: u8,
@@ -54,6 +55,7 @@ pub fn serialize<W: io::Write>(
         into_output,
         color_av1_data,
         alpha_av1_data,
+        exif,
         width,
         height,
         depth_bits,
@@ -139,18 +141,27 @@ impl Aviffy {
         into_output: W,
         color_av1_data: &[u8],
         alpha_av1_data: Option<&[u8]>,
+        exif: Option<&[u8]>,
         width: u32,
         height: u32,
         depth_bits: u8,
     ) -> io::Result<()> {
-        self.make_boxes(color_av1_data, alpha_av1_data, width, height, depth_bits)
-            .write(into_output)
+        self.make_boxes(
+            color_av1_data,
+            alpha_av1_data,
+            exif,
+            width,
+            height,
+            depth_bits,
+        )
+        .write(into_output)
     }
 
     fn make_boxes<'data>(
         &self,
         color_av1_data: &'data [u8],
         alpha_av1_data: Option<&'data [u8]>,
+        exif: Option<&'data [u8]>,
         width: u32,
         height: u32,
         depth_bits: u8,
@@ -164,6 +175,7 @@ impl Aviffy {
         let mut ipco = IpcoBox::new();
         let color_image_id = 1;
         let alpha_image_id = 2;
+        let exif_id = 3;
         const ESSENTIAL_BIT: u8 = 0x80;
         let color_depth_bits = depth_bits;
         let alpha_depth_bits = depth_bits; // Sadly, the spec requires these to match.
@@ -293,6 +305,32 @@ impl Aviffy {
             data_chunks.push(color_av1_data);
         };
 
+        if let Some(exif_data) = exif {
+            image_items.push(InfeBox {
+                id: exif_id,
+                typ: FourCC(*b"Exif"),
+                name: "Exif",
+            });
+            iloc_items.push(IlocItem {
+                id: exif_id,
+                extents: [IlocExtent {
+                    offset: IlocOffset::Relative(
+                        color_av1_data.len() + alpha_av1_data.map_or(0, |a| a.len()),
+                    ),
+                    len: exif_data.len(),
+                }]
+                .into(),
+            });
+            irefs.push(IrefBox {
+                entry: IrefEntryBox {
+                    from_id: color_image_id,
+                    to_id: exif_id,
+                    typ: FourCC(*b"cdsc"),
+                },
+            });
+            data_chunks.push(&exif_data);
+        }
+
         compatible_brands.push(FourCC(*b"mif1"));
         compatible_brands.push(FourCC(*b"miaf"));
         AvifFile {
@@ -327,6 +365,7 @@ impl Aviffy {
         &self,
         color_av1_data: &[u8],
         alpha_av1_data: Option<&[u8]>,
+        exif: Option<&[u8]>,
         width: u32,
         height: u32,
         depth_bits: u8,
@@ -337,6 +376,7 @@ impl Aviffy {
             &mut out,
             color_av1_data,
             alpha_av1_data,
+            exif,
             width,
             height,
             depth_bits,
@@ -372,7 +412,14 @@ pub fn serialize_to_vec(
     height: u32,
     depth_bits: u8,
 ) -> Vec<u8> {
-    Aviffy::new().to_vec(color_av1_data, alpha_av1_data, width, height, depth_bits)
+    Aviffy::new().to_vec(
+        color_av1_data,
+        alpha_av1_data,
+        None,
+        width,
+        height,
+        depth_bits,
+    )
 }
 
 #[test]
@@ -415,7 +462,7 @@ fn test_roundtrip_parse_avif_colr() {
     let test_alpha = [77, 88, 99];
     let avif = Aviffy::new()
         .matrix_coefficients(constants::MatrixCoefficients::Bt709)
-        .to_vec(&test_img, Some(&test_alpha), 10, 20, 8);
+        .to_vec(&test_img, Some(&test_alpha), None, 10, 20, 8);
 
     let ctx = avif_parse::read_avif(&mut avif.as_slice()).unwrap();
 
@@ -430,7 +477,7 @@ fn premultiplied_flag() {
     let avif =
         Aviffy::new()
             .premultiplied_alpha(true)
-            .to_vec(&test_img, Some(&test_alpha), 5, 5, 8);
+            .to_vec(&test_img, Some(&test_alpha), None, 5, 5, 8);
 
     let ctx = avif_parse::read_avif(&mut avif.as_slice()).unwrap();
 
